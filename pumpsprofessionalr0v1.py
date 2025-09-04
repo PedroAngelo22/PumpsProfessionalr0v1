@@ -11,7 +11,7 @@ import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 
-# ALTERADO: Importando as novas funções de cenário do banco de dados
+# Importando as funções de cenário do banco de dados
 from database import setup_database, save_scenario, load_scenario, get_user_projects, get_scenarios_for_project, delete_scenario
 
 # --- CONFIGURAÇÕES E CONSTANTES ---
@@ -206,7 +206,7 @@ authenticator = stauth.Authenticate(
 authenticator.login()
 
 # --- LÓGICA PRINCIPAL DA APLICAÇÃO ---
-if st.session_state["authentication_status"]:
+if st.session_state.get("authentication_status"):
     name = st.session_state['name']
     username = st.session_state['username']
     
@@ -226,24 +226,46 @@ if st.session_state["authentication_status"]:
         st.header(f"Bem-vindo(a), {name}!")
         st.divider()
 
-        # --- NOVA SEÇÃO DE GESTÃO DE PROJETOS E CENÁRIOS ---
         st.header("🚀 Gestão de Projetos e Cenários")
 
-        # --- Widget de Projeto ---
+        # --- LÓGICA DE UI CORRIGIDA ---
+        
+        # Determina o índice do projeto selecionado para manter o estado do selectbox
         user_projects = get_user_projects(username)
-        st.selectbox("Selecione o Projeto", user_projects, key="selected_project", index=None, placeholder="Selecione um projeto...")
+        try:
+            project_idx = user_projects.index(st.session_state.get("selected_project", None))
+        except ValueError:
+            project_idx = 0 # Se não encontrar, seleciona o primeiro
 
-        # --- Widget de Cenário (dependente do projeto selecionado) ---
-        if st.session_state.selected_project:
+        st.selectbox(
+            "Selecione o Projeto", 
+            user_projects, 
+            key="selected_project", 
+            index=project_idx,
+            placeholder="Selecione um projeto..."
+        )
+
+        scenarios = []
+        scenario_idx = 0
+        if st.session_state.get("selected_project"):
             scenarios = get_scenarios_for_project(username, st.session_state.selected_project)
-            st.selectbox("Selecione o Cenário", scenarios, key="selected_scenario", index=None, placeholder="Selecione um cenário...")
+            try:
+                scenario_idx = scenarios.index(st.session_state.get("selected_scenario", None))
+            except ValueError:
+                scenario_idx = 0
+        
+        st.selectbox(
+            "Selecione o Cenário", 
+            scenarios, 
+            key="selected_scenario", 
+            index=scenario_idx,
+            placeholder="Selecione um cenário..."
+        )
 
-        # --- Botões de Ação ---
         col1, col2 = st.columns(2)
         if col1.button("Carregar Cenário", use_container_width=True, disabled=not st.session_state.get("selected_scenario")):
             data = load_scenario(username, st.session_state.selected_project, st.session_state.selected_scenario)
             if data:
-                # Carrega todos os dados do cenário para o session_state
                 st.session_state.h_geometrica = data.get('h_geometrica', 15.0)
                 st.session_state.fluido_selecionado = data.get('fluido_selecionado', "Água a 20°C")
                 st.session_state.curva_altura_df = pd.DataFrame(data['curva_altura'])
@@ -257,11 +279,9 @@ if st.session_state["authentication_status"]:
         if col2.button("Deletar Cenário", use_container_width=True, disabled=not st.session_state.get("selected_scenario")):
             delete_scenario(username, st.session_state.selected_project, st.session_state.selected_scenario)
             st.success(f"Cenário '{st.session_state.selected_scenario}' deletado.")
-            # Limpa a seleção para evitar erros e recarrega
             st.session_state.selected_scenario = None 
             st.rerun()
 
-        # --- Lógica para Salvar ---
         st.divider()
         st.subheader("Salvar Cenário")
         project_name_input = st.text_input("Nome do Projeto", value=st.session_state.get("selected_project", ""))
@@ -280,25 +300,33 @@ if st.session_state["authentication_status"]:
                 }
                 save_scenario(username, project_name_input, scenario_name_input, scenario_data)
                 st.success(f"Cenário '{scenario_name_input}' salvo no projeto '{project_name_input}'.")
-                # Atualiza os seletores
-                st.session_state.selected_project = project_name_input
-                st.session_state.selected_scenario = scenario_name_input
+                
+                # Guarda os nomes para pré-selecionar após o rerun
+                st.session_state.just_saved_project = project_name_input
+                st.session_state.just_saved_scenario = scenario_name_input
                 st.rerun()
             else:
                 st.warning("É necessário um nome para o Projeto e para o Cenário.")
         
+        # Lógica para redefinir a seleção após o salvamento
+        if 'just_saved_project' in st.session_state:
+            st.session_state.selected_project = st.session_state.just_saved_project
+            st.session_state.selected_scenario = st.session_state.just_saved_scenario
+            del st.session_state.just_saved_project
+            del st.session_state.just_saved_scenario
+
         st.divider()
         authenticator.logout('Logout', 'sidebar')
         st.divider()
 
         # --- Seção de Parâmetros da Simulação ---
         st.header("⚙️ Parâmetros da Simulação")
+        # ... (Restante da sidebar original, sem alterações) ...
         st.session_state.fluido_selecionado = st.selectbox("Selecione o Fluido", list(FLUIDOS.keys()), index=list(FLUIDOS.keys()).index(st.session_state.fluido_selecionado))
         st.session_state.h_geometrica = st.number_input("Altura Geométrica (m)", 0.0, value=st.session_state.h_geometrica)
         st.divider()
 
         with st.expander("📈 Curva da Bomba", expanded=True):
-            # ... (Restante da sidebar original)
             st.info("Insira pelo menos 3 pontos da curva de performance.")
             st.subheader("Curva de Altura"); st.session_state.curva_altura_df = st.data_editor(st.session_state.curva_altura_df, num_rows="dynamic", key="editor_altura")
             st.subheader("Curva de Eficiência"); st.session_state.curva_eficiencia_df = st.data_editor(st.session_state.curva_eficiencia_df, num_rows="dynamic", key="editor_eficiencia")
@@ -391,8 +419,8 @@ if st.session_state["authentication_status"]:
         st.error(f"Ocorreu um erro inesperado durante a execução. Detalhe: {str(e)}")
 
 
-elif st.session_state["authentication_status"] is False:
+elif st.session_state.get("authentication_status") is False:
     st.error('Usuário/senha incorreto')
-elif st.session_state["authentication_status"] is None:
+elif st.session_state.get("authentication_status") is None:
     st.title("Bem-vindo à Plataforma de Análise de Redes Hidráulicas")
     st.warning('Por favor, insira seu usuário e senha para começar.')
