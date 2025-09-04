@@ -225,43 +225,45 @@ if st.session_state.get("authentication_status"):
     with st.sidebar:
         st.header(f"Bem-vindo(a), {name}!")
         st.divider()
-
         st.header("🚀 Gestão de Projetos e Cenários")
 
-        # --- LÓGICA DE UI CORRIGIDA ---
+        # --- LÓGICA DE UI CORRIGIDA E FINAL ---
         
-        # Determina o índice do projeto selecionado para manter o estado do selectbox
+        # 1. Busca os projetos do usuário
         user_projects = get_user_projects(username)
-        try:
-            project_idx = user_projects.index(st.session_state.get("selected_project", None))
-        except ValueError:
-            project_idx = 0 # Se não encontrar, seleciona o primeiro
-
+        
+        # 2. Determina o índice do projeto a ser selecionado
+        project_idx = 0
+        if 'selected_project' in st.session_state and st.session_state.selected_project in user_projects:
+            project_idx = user_projects.index(st.session_state.selected_project)
+        
+        # 3. Renderiza o selectbox de Projetos usando o índice
         st.selectbox(
             "Selecione o Projeto", 
             user_projects, 
-            key="selected_project", 
             index=project_idx,
+            key="selected_project",
             placeholder="Selecione um projeto..."
         )
 
+        # 4. Busca cenários e determina o índice do cenário a ser selecionado
         scenarios = []
         scenario_idx = 0
         if st.session_state.get("selected_project"):
             scenarios = get_scenarios_for_project(username, st.session_state.selected_project)
-            try:
-                scenario_idx = scenarios.index(st.session_state.get("selected_scenario", None))
-            except ValueError:
-                scenario_idx = 0
+            if 'selected_scenario' in st.session_state and st.session_state.selected_scenario in scenarios:
+                scenario_idx = scenarios.index(st.session_state.selected_scenario)
         
+        # 5. Renderiza o selectbox de Cenários usando o índice
         st.selectbox(
             "Selecione o Cenário", 
             scenarios, 
-            key="selected_scenario", 
             index=scenario_idx,
+            key="selected_scenario",
             placeholder="Selecione um cenário..."
         )
-
+        
+        # --- Botões de Ação ---
         col1, col2 = st.columns(2)
         if col1.button("Carregar Cenário", use_container_width=True, disabled=not st.session_state.get("selected_scenario")):
             data = load_scenario(username, st.session_state.selected_project, st.session_state.selected_scenario)
@@ -282,6 +284,7 @@ if st.session_state.get("authentication_status"):
             st.session_state.selected_scenario = None 
             st.rerun()
 
+        # --- Lógica para Salvar ---
         st.divider()
         st.subheader("Salvar Cenário")
         project_name_input = st.text_input("Nome do Projeto", value=st.session_state.get("selected_project", ""))
@@ -301,27 +304,19 @@ if st.session_state.get("authentication_status"):
                 save_scenario(username, project_name_input, scenario_name_input, scenario_data)
                 st.success(f"Cenário '{scenario_name_input}' salvo no projeto '{project_name_input}'.")
                 
-                # Guarda os nomes para pré-selecionar após o rerun
-                st.session_state.just_saved_project = project_name_input
-                st.session_state.just_saved_scenario = scenario_name_input
-                st.rerun()
+                # Apenas atualiza as variáveis para a próxima execução, não o estado do widget
+                st.session_state.selected_project = project_name_input
+                st.session_state.selected_scenario = scenario_name_input
+                st.rerun() # Dispara a re-execução que vai usar os índices corretos
             else:
                 st.warning("É necessário um nome para o Projeto e para o Cenário.")
         
-        # Lógica para redefinir a seleção após o salvamento
-        if 'just_saved_project' in st.session_state:
-            st.session_state.selected_project = st.session_state.just_saved_project
-            st.session_state.selected_scenario = st.session_state.just_saved_scenario
-            del st.session_state.just_saved_project
-            del st.session_state.just_saved_scenario
-
         st.divider()
         authenticator.logout('Logout', 'sidebar')
         st.divider()
 
         # --- Seção de Parâmetros da Simulação ---
         st.header("⚙️ Parâmetros da Simulação")
-        # ... (Restante da sidebar original, sem alterações) ...
         st.session_state.fluido_selecionado = st.selectbox("Selecione o Fluido", list(FLUIDOS.keys()), index=list(FLUIDOS.keys()).index(st.session_state.fluido_selecionado))
         st.session_state.h_geometrica = st.number_input("Altura Geométrica (m)", 0.0, value=st.session_state.h_geometrica)
         st.divider()
@@ -417,7 +412,6 @@ if st.session_state.get("authentication_status"):
 
     except Exception as e:
         st.error(f"Ocorreu um erro inesperado durante a execução. Detalhe: {str(e)}")
-
 
 elif st.session_state.get("authentication_status") is False:
     st.error('Usuário/senha incorreto')
