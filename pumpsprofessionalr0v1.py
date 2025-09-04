@@ -18,7 +18,6 @@ from database import setup_database, save_scenario, load_scenario, get_user_proj
 st.set_page_config(layout="wide", page_title="Análise de Redes Hidráulicas")
 plt.style.use('seaborn-v0_8-whitegrid')
 
-# ... (O restante das suas constantes MATERIAIS, K_FACTORS, FLUIDOS permanecem iguais) ...
 MATERIAIS = {
     "Aço Carbono (novo)": 0.046, "Aço Carbono (pouco uso)": 0.1, "Aço Carbono (enferrujado)": 0.2,
     "Aço Inox": 0.002, "Ferro Fundido": 0.26, "PVC / Plástico": 0.0015, "Concreto": 0.5
@@ -32,9 +31,7 @@ K_FACTORS = {
 }
 FLUIDOS = { "Água a 20°C": {"rho": 998.2, "nu": 1.004e-6}, "Etanol a 20°C": {"rho": 789.0, "nu": 1.51e-6} }
 
-
 # --- FUNÇÕES DE CÁLCULO (O MOTOR DA APLICAÇÃO) ---
-# ... (Todas as suas funções de cálculo permanecem exatamente iguais) ...
 def calcular_perda_serie(lista_trechos, vazao_m3h, fluido_selecionado):
     perda_total = 0
     for trecho in lista_trechos:
@@ -234,8 +231,11 @@ if st.session_state.get("authentication_status"):
         
         # 2. Determina o índice do projeto a ser selecionado
         project_idx = 0
-        if 'selected_project' in st.session_state and st.session_state.selected_project in user_projects:
-            project_idx = user_projects.index(st.session_state.selected_project)
+        if st.session_state.get('project_to_select') in user_projects:
+            project_idx = user_projects.index(st.session_state['project_to_select'])
+        elif user_projects:
+            # Se nenhum projeto específico for selecionado, mas houver projetos, seleciona o primeiro
+            st.session_state['selected_project'] = user_projects[0]
         
         # 3. Renderiza o selectbox de Projetos usando o índice
         st.selectbox(
@@ -243,7 +243,7 @@ if st.session_state.get("authentication_status"):
             user_projects, 
             index=project_idx,
             key="selected_project",
-            placeholder="Selecione um projeto..."
+            placeholder="Nenhum projeto encontrado"
         )
 
         # 4. Busca cenários e determina o índice do cenário a ser selecionado
@@ -251,16 +251,18 @@ if st.session_state.get("authentication_status"):
         scenario_idx = 0
         if st.session_state.get("selected_project"):
             scenarios = get_scenarios_for_project(username, st.session_state.selected_project)
-            if 'selected_scenario' in st.session_state and st.session_state.selected_scenario in scenarios:
-                scenario_idx = scenarios.index(st.session_state.selected_scenario)
-        
+            if st.session_state.get('scenario_to_select') in scenarios:
+                scenario_idx = scenarios.index(st.session_state['scenario_to_select'])
+            elif scenarios:
+                 st.session_state['selected_scenario'] = scenarios[0]
+
         # 5. Renderiza o selectbox de Cenários usando o índice
         st.selectbox(
             "Selecione o Cenário", 
             scenarios, 
             index=scenario_idx,
             key="selected_scenario",
-            placeholder="Selecione um cenário..."
+            placeholder="Nenhum cenário encontrado"
         )
         
         # --- Botões de Ação ---
@@ -281,7 +283,9 @@ if st.session_state.get("authentication_status"):
         if col2.button("Deletar Cenário", use_container_width=True, disabled=not st.session_state.get("selected_scenario")):
             delete_scenario(username, st.session_state.selected_project, st.session_state.selected_scenario)
             st.success(f"Cenário '{st.session_state.selected_scenario}' deletado.")
-            st.session_state.selected_scenario = None 
+            # Limpa as variáveis de seleção para evitar erros
+            st.session_state.project_to_select = None
+            st.session_state.scenario_to_select = None
             st.rerun()
 
         # --- Lógica para Salvar ---
@@ -302,12 +306,12 @@ if st.session_state.get("authentication_status"):
                     'ramais_paralelos': st.session_state.ramais_paralelos
                 }
                 save_scenario(username, project_name_input, scenario_name_input, scenario_data)
-                st.success(f"Cenário '{scenario_name_input}' salvo no projeto '{project_name_input}'.")
+                st.success(f"Cenário '{scenario_name_input}' salvo.")
                 
-                # Apenas atualiza as variáveis para a próxima execução, não o estado do widget
-                st.session_state.selected_project = project_name_input
-                st.session_state.selected_scenario = scenario_name_input
-                st.rerun() # Dispara a re-execução que vai usar os índices corretos
+                # Guarda os nomes em variáveis temporárias para a seleção no próximo run
+                st.session_state.project_to_select = project_name_input
+                st.session_state.scenario_to_select = scenario_name_input
+                st.rerun() # Dispara a re-execução
             else:
                 st.warning("É necessário um nome para o Projeto e para o Cenário.")
         
@@ -320,7 +324,6 @@ if st.session_state.get("authentication_status"):
         st.session_state.fluido_selecionado = st.selectbox("Selecione o Fluido", list(FLUIDOS.keys()), index=list(FLUIDOS.keys()).index(st.session_state.fluido_selecionado))
         st.session_state.h_geometrica = st.number_input("Altura Geométrica (m)", 0.0, value=st.session_state.h_geometrica)
         st.divider()
-
         with st.expander("📈 Curva da Bomba", expanded=True):
             st.info("Insira pelo menos 3 pontos da curva de performance.")
             st.subheader("Curva de Altura"); st.session_state.curva_altura_df = st.data_editor(st.session_state.curva_altura_df, num_rows="dynamic", key="editor_altura")
@@ -345,8 +348,8 @@ if st.session_state.get("authentication_status"):
     # --- CORPO PRINCIPAL DA APLICAÇÃO ---
     st.title("💧 Análise de Redes de Bombeamento com Curva de Bomba")
     
-    # ... (Todo o seu bloco try-except para mostrar os resultados permanece igual) ...
     try:
+        # ... (Restante do seu código principal, sem alterações) ...
         func_curva_bomba = criar_funcao_curva(st.session_state.curva_altura_df, "Vazão (m³/h)", "Altura (m)")
         func_curva_eficiencia = criar_funcao_curva(st.session_state.curva_eficiencia_df, "Vazão (m³/h)", "Eficiência (%)")
         if func_curva_bomba is None or func_curva_eficiencia is None:
@@ -357,9 +360,7 @@ if st.session_state.get("authentication_status"):
         if shutoff_head < st.session_state.h_geometrica:
             st.error(f"**Bomba Incompatível:** A altura máxima da bomba ({shutoff_head:.2f} m) é menor que a Altura Geométrica ({st.session_state.h_geometrica:.2f} m). Não existe ponto de operação.")
             st.stop()
-
         sistema_atual = {'antes': st.session_state.trechos_antes, 'paralelo': st.session_state.ramais_paralelos, 'depois': st.session_state.trechos_depois}
-        
         is_rede_vazia = not any(
             trecho for parte in sistema_atual.values()
             for trecho in (parte if isinstance(parte, list) else [item for sublist in parte.values() for item in sublist])
@@ -367,9 +368,7 @@ if st.session_state.get("authentication_status"):
         if is_rede_vazia:
             st.warning("Adicione pelo menos um trecho à rede para realizar o cálculo.")
             st.stop()
-
         vazao_op, altura_op, func_curva_sistema = encontrar_ponto_operacao(sistema_atual, st.session_state.h_geometrica, st.session_state.fluido_selecionado, func_curva_bomba)
-        
         if vazao_op is not None and altura_op is not None:
             eficiencia_op = func_curva_eficiencia(vazao_op)
             if eficiencia_op > 100: eficiencia_op = 100
